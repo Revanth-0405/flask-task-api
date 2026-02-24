@@ -15,6 +15,13 @@ class User(db.Model):
     
     # Flag for soft deletion
     is_deleted = db.Column(db.Boolean, default=False, nullable=False)
+    #to link users to tasks
+    tasks = db.relationship('Task', backref='owner', lazy='dynamic', cascade='all, delete-orphan')
+    #password security methods
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
 
     def to_dict(self):
         return {
@@ -22,5 +29,6 @@ class User(db.Model):
             "username": self.username,
             "email": self.email,
             "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat()
+            "updated_at": self.updated_at.isoformat(),
+            "user_id": self.user_id  
         }

@@ -7,6 +7,7 @@ load_dotenv()
 class Config:
     """Base configuration."""
     SECRET_KEY = os.environ.get('SECRET_KEY', 'default-secret-key')
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'super-secret-key-change-this')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 class DevelopmentConfig(Config):
