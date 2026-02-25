@@ -26,6 +26,45 @@ def create_task():
 @jwt_required()
 def get_user_tasks():
     user_id = get_jwt_identity()
-    # Only fetch tasks belonging to THIS user
-    tasks = Task.query.filter_by(user_id=user_id).all()
-    return jsonify([task.to_dict() for task in tasks]), 200
+
+    # get query parameters
+    search = request.args.get('search')
+    completed = request.args.get('completed')
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
+
+    # start the query for the specific user
+    query = Task.query.filter_by(user_id=user_id)
+
+    #search logic
+    if search:
+        query = query.filter(Task.title.ilike(f'%{search}%'))
+
+    #filter logic
+    if completed is not None:
+        is_done = completed.lower() == 'true'
+        query = query.filter_by(is_completed=is_done)
+    
+    # pagination logic
+    paginated_tasks = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    return jsonify({
+        "tasks": [task.to_dict() for task in paginated_tasks.items],
+        "total_pages": paginated_tasks.pages,
+        "current_page": paginated_tasks.page,
+        "total_items": paginated_tasks.total
+    }), 200
+
+@tasks_bp.route('/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_task(task_id):
+    user_id = get_jwt_identity()
+    task = Task.query.filter_by(id=id, user_id=user_id).first_or_404()
+
+    if not task:
+        return jsonify({"message": "Task not found"}), 404
+    
+    db.session.delete(task)
+    db.session.commit()
+    
+    return jsonify({"message": "Task deleted"}), 200
