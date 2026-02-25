@@ -1,70 +1,86 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.extensions import db
 from app.models.task import Task
+from flask_jwt_extended import jwt_required, get_jwt_identity
 
 tasks_bp = Blueprint('tasks', __name__)
 
 @tasks_bp.route('/', methods=['POST'])
-@jwt_required() # <--- Only logged-in users can enter
+@jwt_required()
 def create_task():
-    user_id = get_jwt_identity() # Extracts the UUID from the token
+    """
+    Create a new task
+    ---
+    tags:
+      - Tasks
+    security:
+      - Bearer: []
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          properties:
+            title:
+              type: string
+              example: Finish Phase 5
+            description:
+              type: string
+              example: Implement Swagger documentation
+    responses:
+      201:
+        description: Task created successfully
+    """
     data = request.get_json()
+    user_id = get_jwt_identity()
     
     new_task = Task(
         title=data.get('title'),
         description=data.get('description'),
-        user_id=user_id # Automatically links the task to the current user
+        user_id=user_id
     )
-    
     db.session.add(new_task)
     db.session.commit()
-    
-    return jsonify(new_task.to_dict()), 201
+    return jsonify({"msg": "Task created", "id": new_task.id}), 201
 
 @tasks_bp.route('/', methods=['GET'])
 @jwt_required()
-def get_user_tasks():
+def get_tasks():
+    """
+    Get all user tasks (with Search and Pagination)
+    ---
+    tags:
+      - Tasks
+    security:
+      - Bearer: []
+    parameters:
+      - name: search
+        in: query
+        type: string
+        description: Search by title (case-insensitive)
+      - name: page
+        in: query
+        type: integer
+        default: 1
+        description: Page number for pagination
+    responses:
+      200:
+        description: List of tasks with pagination metadata
+    """
     user_id = get_jwt_identity()
-
-    # get query parameters
-    search = request.args.get('search')
-    completed = request.args.get('completed')
+    search = request.args.get('search', '')
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 10, type=int)
+    per_page = 5
 
-    # start the query for the specific user
     query = Task.query.filter_by(user_id=user_id)
-
-    #search logic
     if search:
         query = query.filter(Task.title.ilike(f'%{search}%'))
 
-    #filter logic
-    if completed is not None:
-        is_done = completed.lower() == 'true'
-        query = query.filter_by(is_completed=is_done)
+    pagination = query.paginate(page=page, per_page=per_page)
     
-    # pagination logic
-    paginated_tasks = query.paginate(page=page, per_page=per_page, error_out=False)
-
     return jsonify({
-        "tasks": [task.to_dict() for task in paginated_tasks.items],
-        "total_pages": paginated_tasks.pages,
-        "current_page": paginated_tasks.page,
-        "total_items": paginated_tasks.total
+        "tasks": [{"id": t.id, "title": t.title, "completed": t.completed} for t in pagination.items],
+        "total": pagination.total,
+        "pages": pagination.pages,
+        "current_page": pagination.page
     }), 200
-
-@tasks_bp.route('/<int:id>', methods=['DELETE'])
-@jwt_required()
-def delete_task(task_id):
-    user_id = get_jwt_identity()
-    task = Task.query.filter_by(id=id, user_id=user_id).first_or_404()
-
-    if not task:
-        return jsonify({"message": "Task not found"}), 404
-    
-    db.session.delete(task)
-    db.session.commit()
-    
-    return jsonify({"message": "Task deleted"}), 200

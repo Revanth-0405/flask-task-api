@@ -8,6 +8,32 @@ auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
+    """
+    User Registration
+    ---
+    tags:
+      - Authentication
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          properties:
+            username:
+              type: string
+              example: dev_user
+            email:
+              type: string
+              example: dev@example.com
+            password:
+              type: string
+              example: SecurePass123!
+    responses:
+      201:
+        description: User registered successfully
+      400:
+        description: User already exists
+    """
     data = request.get_json()
     
     # Check if user already exists
@@ -19,7 +45,6 @@ def register():
         username=data.get('username'),
         email=data.get('email')
     )
-    # This uses the method we added in Phase 2 to hash the password
     new_user.set_password(data.get('password'))
     
     db.session.add(new_user)
@@ -29,13 +54,36 @@ def register():
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
+    """
+    User Login
+    ---
+    tags:
+      - Authentication
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          properties:
+            username:
+              type: string
+              example: dev_user
+            password:
+              type: string
+              example: SecurePass123!
+    responses:
+      200:
+        description: Returns a JWT access token
+      401:
+        description: Invalid credentials
+    """
     data = request.get_json()
     user = User.query.filter_by(username=data.get('username')).first()
 
     if user and user.check_password(data.get('password')):
-        # Create a token that expires in 24 hours
         expires = datetime.timedelta(hours=24)
-        access_token = create_access_token(identity=user.id, expires_delta=expires)
+        # Ensure identity is a string for UUID compatibility
+        access_token = create_access_token(identity=str(user.id), expires_delta=expires)
         return jsonify(access_token=access_token), 200
 
     return jsonify({"msg": "Bad username or password"}), 401
