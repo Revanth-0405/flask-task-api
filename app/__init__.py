@@ -1,6 +1,6 @@
 from flask import Flask
 from app.config import config_by_name
-from app.extensions import db, migrate, jwt
+from app.extensions import db, migrate, jwt, swagger
 
 def create_app(config_name='dev'):
     """Flask Application Factory pattern"""
@@ -11,7 +11,8 @@ def create_app(config_name='dev'):
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
-
+    swagger.init_app(app)
+    
     # Register blueprints
     from app.routes.health import health_bp
     from app.routes.users import users_bp
