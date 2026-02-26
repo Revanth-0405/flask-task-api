@@ -1,89 +1,81 @@
 from flask import Blueprint, request, jsonify
+from sqlalchemy.exc import IntegrityError
 from app.extensions import db
 from app.models.user import User
-from flask_jwt_extended import create_access_token
-import datetime
+from app.schemas.user_schema import UserCreateSchema, UserUpdateSchema
 
-auth_bp = Blueprint('auth', __name__)
+# We will prefix this blueprint with /api/users in __init__.py
+users_bp = Blueprint('users', __name__)
+create_schema = UserCreateSchema()
+update_schema = UserUpdateSchema()
 
-@auth_bp.route('/register', methods=['POST'])
-def register():
-    """
-    User Registration
-    ---
-    tags:
-      - Authentication
-    parameters:
-      - name: body
-        in: body
-        required: true
-        schema:
-          properties:
-            username:
-              type: string
-              example: dev_user
-            email:
-              type: string
-              example: dev@example.com
-            password:
-              type: string
-              example: SecurePass123!
-    responses:
-      201:
-        description: User registered successfully
-      400:
-        description: User already exists
-    """
+# POST /api/users (Create user)
+@users_bp.route('/', methods=['POST'])
+def create_user():
     data = request.get_json()
     
-    # Check if user already exists
-    if User.query.filter_by(username=data.get('username')).first() or \
-       User.query.filter_by(email=data.get('email')).first():
-        return jsonify({"msg": "User already exists"}), 400
+    # Fix 2.1: Validate input before accessing fields
+    errors = create_schema.validate(data)
+    if errors:
+        return jsonify({"error": True, "message": "Validation failed", "details": errors}), 400
 
-    new_user = User(
-        username=data.get('username'),
-        email=data.get('email')
-    )
-    new_user.set_password(data.get('password'))
-    
-    db.session.add(new_user)
+    new_user = User(username=data['username'], email=data['email'])
+    new_user.set_password(data['password'])
+
+    # Fix 2.2: Explicitly handle duplicate users
+    try:
+        db.session.add(new_user)
+        db.session.commit()
+        return jsonify(new_user.to_dict()), 201
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"error": True, "message": "Username or email already exists"}), 409
+
+# GET /api/users (List all users)
+@users_bp.route('/', methods=['GET'])
+def get_users():
+    users = User.query.filter_by(is_active=True).all()
+    return jsonify([user.to_dict() for user in users]), 200
+
+# GET /api/users/<id> (Get single user)
+@users_bp.route('/<id>', methods=['GET'])
+def get_user(id):
+    user = User.query.filter_by(id=id, is_active=True).first()
+    if not user:
+        return jsonify({"error": True, "message": "User not found"}), 404
+    return jsonify(user.to_dict()), 200
+
+# PUT /api/users/<id> (Update user)
+@users_bp.route('/<id>', methods=['PUT'])
+def update_user(id):
+    user = User.query.filter_by(id=id, is_active=True).first()
+    if not user:
+        return jsonify({"error": True, "message": "User not found"}), 404
+
+    data = request.get_json()
+    errors = update_schema.validate(data)
+    if errors:
+        return jsonify({"error": True, "message": "Validation failed", "details": errors}), 400
+
+    if 'username' in data:
+        user.username = data['username']
+    if 'email' in data:
+        user.email = data['email']
+
+    try:
+        db.session.commit()
+        return jsonify(user.to_dict()), 200
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"error": True, "message": "Username or email already exists"}), 409
+
+# DELETE /api/users/<id> (Soft delete user)
+@users_bp.route('/<id>', methods=['DELETE'])
+def delete_user(id):
+    user = User.query.filter_by(id=id, is_active=True).first()
+    if not user:
+        return jsonify({"error": True, "message": "User not found"}), 404
+
+    user.is_active = False # Soft delete
     db.session.commit()
-    
-    return jsonify({"msg": "User registered successfully", "user_id": new_user.id}), 201
-
-@auth_bp.route('/login', methods=['POST'])
-def login():
-    """
-    User Login
-    ---
-    tags:
-      - Authentication
-    parameters:
-      - name: body
-        in: body
-        required: true
-        schema:
-          properties:
-            username:
-              type: string
-              example: dev_user
-            password:
-              type: string
-              example: SecurePass123!
-    responses:
-      200:
-        description: Returns a JWT access token
-      401:
-        description: Invalid credentials
-    """
-    data = request.get_json()
-    user = User.query.filter_by(username=data.get('username')).first()
-
-    if user and user.check_password(data.get('password')):
-        expires = datetime.timedelta(hours=24)
-        # Ensure identity is a string for UUID compatibility
-        access_token = create_access_token(identity=str(user.id), expires_delta=expires)
-        return jsonify(access_token=access_token), 200
-
-    return jsonify({"msg": "Bad username or password"}), 401
+    return jsonify({"message": "User soft deleted successfully"}), 200

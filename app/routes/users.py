@@ -1,56 +1,32 @@
-from flask import Blueprint, request, jsonify
+import uuid
+from datetime import datetime, timezone
+from werkzeug.security import generate_password_hash, check_password_hash
 from app.extensions import db
-from app.models.user import User
-from werkzeug.security import generate_password_hash
 
-users_bp = Blueprint('users', __name__)
+class User(db.Model):
+    __tablename__ = 'users'
 
-@users_bp.route('/', methods=['GET'])
-def get_users():
-    # Only fetch users that are not soft-deleted
-    users = User.query.filter_by(is_deleted=False).all()
-    return jsonify([user.to_dict() for user in users]), 200
+    # Using UUID string as primary key
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-@users_bp.route('/<id>', methods=['GET'])
-def get_user(id):
-    user = User.query.filter_by(id=id, is_deleted=False).first_or_404()
-    return jsonify(user.to_dict()), 200
+    # imports for werkzeug are now at the top of the file
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
 
-@users_bp.route('/', methods=['POST'])
-def create_user():
-    data = request.get_json()
-    
-    # Hash the password before saving
-    hashed_password = generate_password_hash(data['password'])
-    
-    new_user = User(
-        username=data['username'],
-        email=data['email'],
-        password_hash=hashed_password
-    )
-    db.session.add(new_user)
-    db.session.commit()
-    return jsonify({"message": "User created", "id": new_user.id}), 201
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
 
-@users_bp.route('/<id>', methods=['PUT'])
-def update_user(id):
-    user = User.query.filter_by(id=id, is_deleted=False).first_or_404()
-    data = request.get_json()
-    
-    if 'username' in data:
-        user.username = data['username']
-    if 'email' in data:
-        user.email = data['email']
-        
-    db.session.commit()
-    return jsonify({"message": "User updated", "user": user.to_dict()}), 200
-
-@users_bp.route('/<id>', methods=['DELETE'])
-def delete_user(id):
-    user = User.query.filter_by(id=id, is_deleted=False).first_or_404()
-    
-    # Soft delete logic
-    user.is_deleted = True
-    db.session.commit()
-    
-    return jsonify({"message": "User softly deleted"}), 200
+    #  Only referencing existing fields
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "username": self.username,
+            "email": self.email,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
