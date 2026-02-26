@@ -1,5 +1,6 @@
 from app.extensions import db
 from app.models.task import Task
+from app.services.dynamodb_service import dynamo_service
 
 class TaskService:
     @staticmethod
@@ -14,6 +15,9 @@ class TaskService:
         )
         db.session.add(new_task)
         db.session.commit()
+        
+        # Log activity to DynamoDB
+        dynamo_service().log_activity(user_id, "create", new_task.id, {"title": new_task.title})
         return new_task.to_dict(), 201
 
     @staticmethod
@@ -55,6 +59,9 @@ class TaskService:
         if 'due_date' in data: task.due_date = data['due_date']
 
         db.session.commit()
+        
+        # Log activity to DynamoDB
+        dynamo_service.log_activity(user_id, "update", task.id, data)
         return task.to_dict(), 200
 
     @staticmethod
@@ -65,4 +72,7 @@ class TaskService:
 
         task.is_active = False
         db.session.commit()
+        
+        # Log activity to DynamoDB
+        dynamo_service.log_activity(user_id, "delete", task.id, {})
         return {"message": "Task soft deleted successfully"}, 200
