@@ -1,86 +1,59 @@
 from flask import Blueprint, request, jsonify
-from app.extensions import db
-from app.models.task import Task
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import get_jwt_identity
+from app.services.task_service import TaskService
+from app.schemas.task_schema import TaskSchema
+from app.utils.decorators import auth_required
 
 tasks_bp = Blueprint('tasks', __name__)
+task_schema = TaskSchema()
 
+# 5. POST /api/tasks
 @tasks_bp.route('/', methods=['POST'])
-@jwt_required()
+@auth_required()
 def create_task():
-    """
-    Create a new task
-    ---
-    tags:
-      - Tasks
-    security:
-      - Bearer: []
-    parameters:
-      - name: body
-        in: body
-        required: true
-        schema:
-          properties:
-            title:
-              type: string
-              example: Finish Phase 5
-            description:
-              type: string
-              example: Implement Swagger documentation
-    responses:
-      201:
-        description: Task created successfully
-    """
     data = request.get_json()
-    user_id = get_jwt_identity()
+    errors = task_schema.validate(data)
+    if errors:
+        return jsonify({"error": True, "message": "Validation Error", "details": errors}), 400
     
-    new_task = Task(
-        title=data.get('title'),
-        description=data.get('description'),
-        user_id=user_id
-    )
-    db.session.add(new_task)
-    db.session.commit()
-    return jsonify({"msg": "Task created", "id": new_task.id}), 201
+    user_id = get_jwt_identity()
+    response, status = TaskService.create_task(data, user_id)
+    return jsonify(response), status
 
+# 6. GET /api/tasks
 @tasks_bp.route('/', methods=['GET'])
-@jwt_required()
+@auth_required()
 def get_tasks():
-    """
-    Get all user tasks (with Search and Pagination)
-    ---
-    tags:
-      - Tasks
-    security:
-      - Bearer: []
-    parameters:
-      - name: search
-        in: query
-        type: string
-        description: Search by title (case-insensitive)
-      - name: page
-        in: query
-        type: integer
-        default: 1
-        description: Page number for pagination
-    responses:
-      200:
-        description: List of tasks with pagination metadata
-    """
     user_id = get_jwt_identity()
-    search = request.args.get('search', '')
+    status_filter = request.args.get('status')
+    priority_filter = request.args.get('priority')
     page = request.args.get('page', 1, type=int)
-    per_page = 5
+    per_page = request.args.get('per_page', 10, type=int)
 
-    query = Task.query.filter_by(user_id=user_id)
-    if search:
-        query = query.filter(Task.title.ilike(f'%{search}%'))
+    response, status = TaskService.get_tasks(user_id, status_filter, priority_filter, page, per_page)
+    return jsonify(response), status
 
-    pagination = query.paginate(page=page, per_page=per_page)
-    
-    return jsonify({
-        "tasks": [{"id": t.id, "title": t.title, "completed": t.completed} for t in pagination.items],
-        "total": pagination.total,
-        "pages": pagination.pages,
-        "current_page": pagination.page
-    }), 200
+# 7. GET /api/tasks/<id>
+@tasks_bp.route('/<id>', methods=['GET'])
+@auth_required()
+def get_task(id):
+    user_id = get_jwt_identity()
+    response, status = TaskService.get_task(id, user_id)
+    return jsonify(response), status
+
+# 8. PUT /api/tasks/<id>
+@tasks_bp.route('/<id>', methods=['PUT'])
+@auth_required()
+def update_task(id):
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    response, status = TaskService.update_task(id, user_id, data)
+    return jsonify(response), status
+
+# 9. DELETE /api/tasks/<id>
+@tasks_bp.route('/<id>', methods=['DELETE'])
+@auth_required()
+def delete_task(id):
+    user_id = get_jwt_identity()
+    response, status = TaskService.delete_task(id, user_id)
+    return jsonify(response), status

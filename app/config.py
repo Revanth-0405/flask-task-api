@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -9,6 +10,9 @@ class Config:
     if not SECRET_KEY:
         raise ValueError("No SECRET_KEY set for Flask application. Check your .env file.")
     
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY')
+    if not JWT_SECRET_KEY:
+        raise ValueError("No JWT_SECRET_KEY set for Flask application. Check your .env file.")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 class DevelopmentConfig(Config):
@@ -25,6 +29,7 @@ class ProductionConfig(Config):
 
 config_by_name = {
     'dev': DevelopmentConfig,
+    'development': DevelopmentConfig,
     'test': TestingConfig,
     'prod': ProductionConfig
 }

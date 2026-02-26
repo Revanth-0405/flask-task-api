@@ -1,81 +1,42 @@
 from flask import Blueprint, request, jsonify
-from sqlalchemy.exc import IntegrityError
-from app.extensions import db
-from app.models.user import User
-from app.schemas.user_schema import UserCreateSchema, UserUpdateSchema
+from flask_jwt_extended import get_jwt, jwt_required, get_jwt_identity, create_access_token
+from app.services.auth_service import AuthService
+from app.schemas.user_schema import UserCreateSchema
+from app.utils.decorators import auth_required
 
-# We will prefix this blueprint with /api/users in __init__.py
-users_bp = Blueprint('users', __name__)
-create_schema = UserCreateSchema()
-update_schema = UserUpdateSchema()
+auth_bp = Blueprint('auth', __name__)
+user_schema = UserCreateSchema()
 
-# POST /api/users (Create user)
-@users_bp.route('/', methods=['POST'])
-def create_user():
+# 1. POST /api/auth/register
+@auth_bp.route('/register', methods=['POST'])
+def register():
     data = request.get_json()
+    errors = user_schema.validate(data)
+    if errors:
+        return jsonify({"error": True, "message": "Validation Error", "details": errors}), 400
     
-    # Fix 2.1: Validate input before accessing fields
-    errors = create_schema.validate(data)
-    if errors:
-        return jsonify({"error": True, "message": "Validation failed", "details": errors}), 400
+    response, status = AuthService.register_user(data)
+    return jsonify(response), status
 
-    new_user = User(username=data['username'], email=data['email'])
-    new_user.set_password(data['password'])
-
-    # Fix 2.2: Explicitly handle duplicate users
-    try:
-        db.session.add(new_user)
-        db.session.commit()
-        return jsonify(new_user.to_dict()), 201
-    except IntegrityError:
-        db.session.rollback()
-        return jsonify({"error": True, "message": "Username or email already exists"}), 409
-
-# GET /api/users (List all users)
-@users_bp.route('/', methods=['GET'])
-def get_users():
-    users = User.query.filter_by(is_active=True).all()
-    return jsonify([user.to_dict() for user in users]), 200
-
-# GET /api/users/<id> (Get single user)
-@users_bp.route('/<id>', methods=['GET'])
-def get_user(id):
-    user = User.query.filter_by(id=id, is_active=True).first()
-    if not user:
-        return jsonify({"error": True, "message": "User not found"}), 404
-    return jsonify(user.to_dict()), 200
-
-# PUT /api/users/<id> (Update user)
-@users_bp.route('/<id>', methods=['PUT'])
-def update_user(id):
-    user = User.query.filter_by(id=id, is_active=True).first()
-    if not user:
-        return jsonify({"error": True, "message": "User not found"}), 404
-
+# 2. POST /api/auth/login
+@auth_bp.route('/login', methods=['POST'])
+def login():
     data = request.get_json()
-    errors = update_schema.validate(data)
-    if errors:
-        return jsonify({"error": True, "message": "Validation failed", "details": errors}), 400
+    response, status = AuthService.login_user(data)
+    return jsonify(response), status
 
-    if 'username' in data:
-        user.username = data['username']
-    if 'email' in data:
-        user.email = data['email']
+# 3. POST /api/auth/refresh
+@auth_bp.route('/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+def refresh():
+    current_user_id = get_jwt_identity()
+    new_access_token = create_access_token(identity=current_user_id)
+    return jsonify(access_token=new_access_token), 200
 
-    try:
-        db.session.commit()
-        return jsonify(user.to_dict()), 200
-    except IntegrityError:
-        db.session.rollback()
-        return jsonify({"error": True, "message": "Username or email already exists"}), 409
-
-# DELETE /api/users/<id> (Soft delete user)
-@users_bp.route('/<id>', methods=['DELETE'])
-def delete_user(id):
-    user = User.query.filter_by(id=id, is_active=True).first()
-    if not user:
-        return jsonify({"error": True, "message": "User not found"}), 404
-
-    user.is_active = False # Soft delete
-    db.session.commit()
-    return jsonify({"message": "User soft deleted successfully"}), 200
+# 4. POST /api/auth/logout
+@auth_bp.route('/logout', methods=['POST'])
+@auth_required()
+def logout():
+    jti = get_jwt()["jti"]
+    response, status = AuthService.logout_user(jti)
+    return jsonify(response), status
