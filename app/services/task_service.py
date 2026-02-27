@@ -17,7 +17,7 @@ class TaskService:
         db.session.commit()
         
         # Log activity to DynamoDB
-        dynamo_service().log_activity(user_id, "create", new_task.id, {"title": new_task.title})
+        dynamo_service.log_activity(user_id, "create", new_task.id, {"title": new_task.title})
         return new_task.to_dict(), 201
 
     @staticmethod
