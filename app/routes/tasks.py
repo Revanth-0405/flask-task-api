@@ -33,27 +33,33 @@ def get_tasks():
     response, status = TaskService.get_tasks(user_id, status_filter, priority_filter, page, per_page)
     return jsonify(response), status
 
-# 7. GET /api/tasks/<id>
-@tasks_bp.route('/<id>', methods=['GET'])
+# 7. GET /api/tasks/<task_id>
+@tasks_bp.route('/<int:task_id>', methods=['GET'])
 @auth_required()
-def get_task(id):
+def get_task(task_id):
     user_id = get_jwt_identity()
-    response, status = TaskService.get_task(id, user_id)
+    response, status = TaskService.get_task(task_id, user_id)
     return jsonify(response), status
 
-# 8. PUT /api/tasks/<id>
-@tasks_bp.route('/<id>', methods=['PUT'])
+# 8. PATCH/PUT /api/tasks/<task_id>
+@tasks_bp.route('/<int:task_id>', methods=['PUT', 'PATCH'])
 @auth_required()
-def update_task(id):
-    user_id = get_jwt_identity()
+def update_task(task_id):
     data = request.get_json()
-    response, status = TaskService.update_task(id, user_id, data)
+    
+    # Assuming Marshmallow or similar; partial=True allows omitting fields during updates
+    errors = task_schema.validate(data, partial=True) 
+    if errors:
+        return jsonify({"error": True, "message": "Validation Error", "details": errors}), 400
+
+    user_id = get_jwt_identity()
+    response, status = TaskService.update_task(task_id, user_id, data)
     return jsonify(response), status
 
-# 9. DELETE /api/tasks/<id>
-@tasks_bp.route('/<id>', methods=['DELETE'])
+# 9. DELETE /api/tasks/<task_id>
+@tasks_bp.route('/<int:task_id>', methods=['DELETE'])
 @auth_required()
-def delete_task(id):
+def delete_task(task_id):
     user_id = get_jwt_identity()
-    response, status = TaskService.delete_task(id, user_id)
+    response, status = TaskService.delete_task(task_id, user_id)
     return jsonify(response), status
