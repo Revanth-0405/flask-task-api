@@ -1,6 +1,7 @@
 from flask import Flask
 from app.config import config_by_name
 from app.extensions import db, migrate, ma, jwt
+from app.utils.error_handlers import register_error_handlers
 
 def create_app(config_name='dev'):
     app = Flask(__name__)
@@ -20,7 +21,7 @@ def create_app(config_name='dev'):
     @jwt.token_in_blocklist_loader
     def check_if_token_revoked(jwt_header, jwt_payload: dict) -> bool:
         jti = jwt_payload["jti"]
-        token = TokenBlacklist.query.filter_by(jti=jti).scalar()
+        token = TokenBlocklist.query.filter_by(jti=jti).scalar()
         return token is not None
 
     # Register blueprints exactly as requested in Section 4.2
@@ -28,7 +29,9 @@ def create_app(config_name='dev'):
     from app.routes.auth import auth_bp
     from app.routes.tasks import tasks_bp
 
-    
+    # Register error handlers
+    register_error_handlers(app)
+
     app.register_blueprint(health_bp, url_prefix='/api/health')
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(tasks_bp, url_prefix='/api/tasks')
