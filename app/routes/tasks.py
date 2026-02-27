@@ -34,7 +34,7 @@ def get_tasks():
     return jsonify(response), status
 
 # 7. GET /api/tasks/<task_id>
-@tasks_bp.route('/<int:task_id>', methods=['GET'])
+@tasks_bp.route('/<string:task_id>', methods=['GET'])
 @auth_required()
 def get_task(task_id):
     user_id = get_jwt_identity()
@@ -42,7 +42,7 @@ def get_task(task_id):
     return jsonify(response), status
 
 # 8. PATCH/PUT /api/tasks/<task_id>
-@tasks_bp.route('/<int:task_id>', methods=['PUT', 'PATCH'])
+@tasks_bp.route('/<string:task_id>', methods=['PUT', 'PATCH'])
 @auth_required()
 def update_task(task_id):
     data = request.get_json()
@@ -57,7 +57,7 @@ def update_task(task_id):
     return jsonify(response), status
 
 # 9. DELETE /api/tasks/<task_id>
-@tasks_bp.route('/<int:task_id>', methods=['DELETE'])
+@tasks_bp.route('/<string:task_id>', methods=['DELETE'])
 @auth_required()
 def delete_task(task_id):
     user_id = get_jwt_identity()
