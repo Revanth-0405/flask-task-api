@@ -1,7 +1,7 @@
 from flask import Flask
 from app.config import config_by_name
 from app.extensions import db, migrate, ma, jwt
-from app.utils.error_handlers import register_error_handlers
+from app.utils.error_handlers import register_error_handlers, setup_logging # ADDED: setup_logging
 
 def create_app(config_name='dev'):
     app = Flask(__name__)
@@ -27,13 +27,15 @@ def create_app(config_name='dev'):
     # Register blueprints exactly as requested in Section 4.2
     from app.routes.health import health_bp
     from app.routes.auth import auth_bp
-    from app.routes.tasks import tasks_bp
+    from app.routes.tasks import tasks_bp, activities_bp # ADDED: activities_bp
 
-    # Register error handlers
+    # Register error handlers and setup Python logging
+    setup_logging(app) # ADDED: Initializes dev/prod logging and request middleware
     register_error_handlers(app)
 
     app.register_blueprint(health_bp, url_prefix='/api/health')
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(tasks_bp, url_prefix='/api/tasks')
+    app.register_blueprint(activities_bp, url_prefix='/api/activities') # ADDED: Registers the Phase 3 endpoint
 
     return app
