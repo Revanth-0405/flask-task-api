@@ -1,32 +1,40 @@
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import EndpointConnectionError, ClientError
+from boto3.dynamodb.conditions import Key
 import uuid
 from datetime import datetime, timezone
+import logging
+
+logger = logging.getLogger(__name__)
 
 class DynamoDBService:
     def __init__(self):
-        # Connect to the DynamoDB Local Docker container
-        self.dynamodb = boto3.resource(
-            'dynamodb',
-            endpoint_url='http://localhost:8000',
-            region_name='us-east-1',
-            aws_access_key_id='dummy',
-            aws_secret_access_key='dummy'
-        )
-        self.table_name = 'TaskActivityLog'
-        self.table = self._ensure_table_exists()
+        self.dynamodb = None
+        self.table = None
+        self._initialize_connection()
 
-    def _ensure_table_exists(self):
-        """Creates the TaskActivityLog table if it doesn't exist."""
+    def _initialize_connection(self):
+        # FIX 5.1: Try-except wrapper to prevent app crash if DynamoDB Local is down
         try:
-            table = self.dynamodb.Table(self.table_name)
-            table.load()
-            return table
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'ResourceNotFoundException':
-                # Assessment Requirement: user_id (Partition) and timestamp (Sort)
-                return self.dynamodb.create_table(
-                    TableName=self.table_name,
+            self.dynamodb = boto3.resource(
+                'dynamodb',
+                endpoint_url='http://localhost:8000',
+                region_name='us-east-1',
+                aws_access_key_id='dummy',
+                aws_secret_access_key='dummy'
+            )
+            self._create_table_if_not_exists()
+        except Exception as e:
+            logger.warning(f"DynamoDB Local not running. Activity logging disabled. Error: {e}")
+            self.dynamodb = None
+
+    def _create_table_if_not_exists(self):
+        try:
+            # Check if table exists
+            existing_tables = [table.name for table in self.dynamodb.tables.all()]
+            if 'TaskActivityLogs' not in existing_tables:
+                self.table = self.dynamodb.create_table(
+                    TableName='TaskActivityLogs',
                     KeySchema=[
                         {'AttributeName': 'user_id', 'KeyType': 'HASH'},
                         {'AttributeName': 'timestamp', 'KeyType': 'RANGE'}
@@ -37,24 +45,44 @@ class DynamoDBService:
                     ],
                     ProvisionedThroughput={'ReadCapacityUnits': 5, 'WriteCapacityUnits': 5}
                 )
-            raise e
+                self.table.meta.client.get_waiter('table_exists').wait(TableName='TaskActivityLogs')
+            else:
+                self.table = self.dynamodb.Table('TaskActivityLogs')
+        except Exception as e:
+            logger.error(f"Failed to verify/create DynamoDB table: {e}")
+            self.dynamodb = None
 
-    def log_activity(self, user_id, action, task_id, details=None, ip_address="127.0.0.1"):
-        """Logs task mutations (created, updated, deleted) to DynamoDB."""
-        if details is None:
-            details = {}
+    def log_activity(self, user_id, action, task_id, details, ip_address):
+        if not self.dynamodb or not self.table:
+            return # Graceful degradation if DB is down
             
-        item = {
-            'user_id': str(user_id),
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'activity_id': str(uuid.uuid4()),
-            'action': action,
-            'task_id': str(task_id),
-            'details': details,
-            'ip_address': ip_address
-        }
-        self.table.put_item(Item=item)
-        return item
+        try:
+            self.table.put_item(
+                Item={
+                    'user_id': str(user_id),
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'activity_id': str(uuid.uuid4()),
+                    'action': action,
+                    'task_id': str(task_id),
+                    'details': details,
+                    'ip_address': ip_address
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to log activity: {e}")
 
-# Create a singleton instance to use across the app
+    # FIX 5.2: Added method to fetch activity logs
+    def get_activities(self, user_id):
+        if not self.dynamodb or not self.table:
+            return []
+        try:
+            response = self.table.query(
+                KeyConditionExpression=Key('user_id').eq(str(user_id)),
+                ScanIndexForward=False # Newest first
+            )
+            return response.get('Items', [])
+        except Exception as e:
+            logger.error(f"Failed to fetch activities: {e}")
+            return []
+
 dynamo_service = DynamoDBService()

@@ -3,9 +3,42 @@ from flask_jwt_extended import get_jwt_identity
 from app.services.task_service import TaskService
 from app.schemas.task_schema import TaskSchema
 from app.utils.decorators import auth_required
+from app.services.dynamodb_service import dynamo_service
+from collections import Counter
 
 tasks_bp = Blueprint('tasks', __name__)
 task_schema = TaskSchema()
+
+@tasks_bp.route('/stats', methods=['GET'])
+@auth_required()
+def get_stats():
+    user_id = get_jwt_identity()
+    response, status = TaskService.get_task_stats(user_id)
+    return jsonify(response), status
+
+@tasks_bp.route('/search', methods=['GET'])
+@auth_required()
+def search_tasks():
+    user_id = get_jwt_identity()
+    search_term = request.args.get('q', '')
+    response, status = TaskService.search_tasks(user_id, search_term)
+    return jsonify(response), status
+
+@tasks_bp.route('/bulk-update', methods=['POST'])
+@auth_required()
+def bulk_update():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    response, status = TaskService.bulk_update_tasks(user_id, data)
+    return jsonify(response), status
+
+@tasks_bp.route('/bulk-delete', methods=['POST'])
+@auth_required()
+def bulk_delete():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    response, status = TaskService.bulk_delete_tasks(user_id, data)
+    return jsonify(response), status
 
 # 5. POST /api/tasks
 @tasks_bp.route('/', methods=['POST'])
@@ -63,3 +96,26 @@ def delete_task(task_id):
     user_id = get_jwt_identity()
     response, status = TaskService.delete_task(task_id, user_id)
     return jsonify(response), status
+
+activities_bp = Blueprint('activities', __name__)
+
+@activities_bp.route('/', methods=['GET'])
+@auth_required()
+def get_activities():
+    user_id = get_jwt_identity()
+    activities = dynamo_service.get_activities(user_id)
+    return jsonify({"activities": activities}), 200
+
+@activities_bp.route('/summary', methods=['GET'])
+@auth_required()
+def get_activity_summary():
+    user_id = get_jwt_identity()
+    activities = dynamo_service.get_activities(user_id)
+    
+    # Generate summary counts based on action types
+    action_counts = dict(Counter([item.get('action') for item in activities]))
+    
+    return jsonify({
+        "total_activities": len(activities),
+        "summary": action_counts
+    }), 200

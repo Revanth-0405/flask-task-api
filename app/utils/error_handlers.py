@@ -1,5 +1,37 @@
-from flask import jsonify
+import logging
+import os
+from flask import request, jsonify
 from werkzeug.exceptions import HTTPException
+
+#login setup for logging
+def setup_logging(app):
+    env = os.getenv('FLASK_ENV', 'development')
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
+    #congigure base on environment
+    if env in ['production', 'prod']:
+        file_handler = logging.FileHandler('app.log')
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    else:
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+    
+    #request/response
+    @app.before_request
+    def log_request_info():
+        app.logger.info(f"Request: {request.method} {request.url} - IP: {request.remote_addr}")
+
+    @app.after_request
+    def log_response_info(response):
+        app.logger.info(f"Response: {response.status} - IP: {request.remote_addr}")
+        return response
 
 def register_error_handlers(app):
     
