@@ -103,7 +103,12 @@ activities_bp = Blueprint('activities', __name__)
 @auth_required()
 def get_activities():
     user_id = get_jwt_identity()
-    activities = dynamo_service.get_activities(user_id)
+    action = request.args.get('action')
+    task_id = request.args.get('task_id')
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+
+    activities = dynamo_service.get_activities(user_id, action, task_id, date_from, date_to)
     return jsonify({"activities": activities}), 200
 
 @activities_bp.route('/summary', methods=['GET'])
