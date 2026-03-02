@@ -86,7 +86,7 @@ class TaskService:
         dynamo_service.log_activity(user_id, "delete", task.id, {})
         return {"message": "Task soft deleted successfully"}, 200
     
-     @staticmethod
+    @staticmethod
     def get_task_stats(user_id):
         """Generates statistical summary of user's active tasks"""
         total_tasks = Task.query.filter_by(user_id=user_id, is_active=True).count()
