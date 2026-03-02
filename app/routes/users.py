@@ -1,32 +1,45 @@
-import uuid
-from datetime import datetime, timezone
-from werkzeug.security import generate_password_hash, check_password_hash
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import get_jwt_identity
+from app.models.user import User
 from app.extensions import db
+from app.utils.decorators import auth_required
 
-class User(db.Model):
-    __tablename__ = 'users'
+users_bp = Blueprint('users', __name__)
 
-    # Using UUID string as primary key
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(256), nullable=False)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+@users_bp.route('/<string:user_id>', methods=['GET'])
+@auth_required()
+def get_user(user_id):
+    current_user = get_jwt_identity()
+    if current_user != user_id:
+        return jsonify({"error": True, "message": "Unauthorized"}), 403
+    
+    user = User.query.get_or_404(user_id)
+    return jsonify(user.to_dict()), 200
 
-    # imports for werkzeug are now at the top of the file
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
+@users_bp.route('/<string:user_id>', methods=['PUT', 'PATCH'])
+@auth_required()
+def update_user(user_id):
+    current_user = get_jwt_identity()
+    if current_user != user_id:
+        return jsonify({"error": True, "message": "Unauthorized"}), 403
+    
+    user = User.query.get_or_404(user_id)
+    data = request.get_json()
+    
+    if 'username' in data: user.username = data['username']
+    if 'email' in data: user.email = data['email']
+    
+    db.session.commit()
+    return jsonify(user.to_dict()), 200
 
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
-
-    #  Only referencing existing fields
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "username": self.username,
-            "email": self.email,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None
-        }
+@users_bp.route('/<string:user_id>', methods=['DELETE'])
+@auth_required()
+def delete_user(user_id):
+    current_user = get_jwt_identity()
+    if current_user != user_id:
+        return jsonify({"error": True, "message": "Unauthorized"}), 403
+    
+    user = User.query.get_or_404(user_id)
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({"message": "User deleted successfully"}), 200

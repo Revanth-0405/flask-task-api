@@ -25,6 +25,7 @@ def create_app(config_name='dev'):
         return token is not None
 
     # Register blueprints exactly as requested in Section 4.2
+    from app.routes.users import users_bp
     from app.routes.health import health_bp
     from app.routes.auth import auth_bp
     from app.routes.tasks import tasks_bp, activities_bp # ADDED: activities_bp
@@ -33,6 +34,7 @@ def create_app(config_name='dev'):
     setup_logging(app) # ADDED: Initializes dev/prod logging and request middleware
     register_error_handlers(app)
 
+    app.register_blueprint(users_bp, url_prefix='/api/users')
     app.register_blueprint(health_bp, url_prefix='/api/health')
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(tasks_bp, url_prefix='/api/tasks')

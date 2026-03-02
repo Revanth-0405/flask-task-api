@@ -71,16 +71,27 @@ class DynamoDBService:
         except Exception as e:
             logger.error(f"Failed to log activity: {e}")
 
-    # FIX 5.2: Added method to fetch activity logs
-    def get_activities(self, user_id):
+    # Added method to fetch activity logs
+    def get_activities(self, user_id, action=None, task_id=None, date_from=None, date_to=None):
         if not self.dynamodb or not self.table:
             return []
         try:
             response = self.table.query(
                 KeyConditionExpression=Key('user_id').eq(str(user_id)),
-                ScanIndexForward=False # Newest first
+                ScanIndexForward=False
             )
-            return response.get('Items', [])
+            items = response.get('Items', [])
+            
+            # Apply Issue 6 Filters
+            filtered_items = []
+            for item in items:
+                if action and item.get('action') != action: continue
+                if task_id and item.get('task_id') != str(task_id): continue
+                if date_from and item.get('timestamp') < date_from: continue
+                if date_to and item.get('timestamp') > date_to: continue
+                filtered_items.append(item)
+                
+            return filtered_items
         except Exception as e:
             logger.error(f"Failed to fetch activities: {e}")
             return []
