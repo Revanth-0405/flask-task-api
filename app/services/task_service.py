@@ -27,7 +27,7 @@ class TaskService:
         db.session.commit()
         
         # Log activity to DynamoDB
-        dynamo_service.log_activity(user_id, "create", new_task.id, {"title": new_task.title})
+        dynamo_service.log_activity(user_id, "create", new_task.id, {"title": new_task.title}, TaskService._get_ip())
         return new_task.to_dict(), 201
 
     @staticmethod
@@ -96,7 +96,7 @@ class TaskService:
 
     @staticmethod
     def get_task_stats(user_id):
-        
+
         now = datetime.now(timezone.utc)
         seven_days_ago = now - timedelta(days=7)
         
@@ -104,7 +104,7 @@ class TaskService:
         status_counts = db.session.query(Task.status, func.count(Task.id)).filter_by(user_id=user_id, is_active=True).group_by(Task.status).all()
         priority_counts = db.session.query(Task.priority, func.count(Task.id)).filter_by(user_id=user_id, is_active=True).group_by(Task.priority).all()
 
-        overdue_count = Task.query.filter(Task.user_id == user_id, Task.is_active == True, Task.due_date < now, Task.status != 'done').count()
+        overdue_count = Task.query.filter(Task.user_id == user_id, Task.is_active == True, Task.due_date < now.date(), Task.status != 'done').count()
         completed_this_week = Task.query.filter(Task.user_id == user_id, Task.is_active == True, Task.status == 'done', Task.updated_at >= seven_days_ago).count()
 
         completed_tasks = Task.query.filter_by(user_id=user_id, is_active=True, status='done').all()
@@ -123,20 +123,28 @@ class TaskService:
         }, 200
 
     @staticmethod
-    def search_tasks(user_id, search_term):
-        """Searches titles and descriptions using combined filters"""
-        if not search_term:
-            return {"tasks": []}, 200
-            
-        search_pattern = f"%{search_term}%"
-        tasks = Task.query.filter(
-            Task.user_id == user_id,
-            Task.is_active == True,
-            or_(Task.title.ilike(search_pattern), Task.description.ilike(search_pattern))
-        ).all()
-        
-        return {"tasks": [task.to_dict() for task in tasks]}, 200
+    def search_tasks(user_id, search_term, status=None, priority=None, date_from=None, date_to=None):
+        """Searches titles and descriptions using combined filters (Fixes 6.6)"""
+        query = Task.query.filter(Task.user_id == user_id, Task.is_active == True)
 
+        # Text Search (ILIKE)
+        if search_term:
+            search_pattern = f"%{search_term}%"
+            query = query.filter(or_(Task.title.ilike(search_pattern), Task.description.ilike(search_pattern)))
+        
+        # Combined Filters
+        if status:
+            query = query.filter(Task.status == status)
+        if priority:
+            query = query.filter(Task.priority == priority)
+        if date_from:
+            query = query.filter(Task.due_date >= date_from)
+        if date_to:
+            query = query.filter(Task.due_date <= date_to)
+
+        tasks = query.all()
+        return {"tasks": [task.to_dict() for task in tasks]}, 200
+    
     @staticmethod
     def bulk_update_tasks(user_id, data):
         """Updates multiple tasks at once with ownership validation"""

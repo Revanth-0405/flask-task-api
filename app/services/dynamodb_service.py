@@ -93,7 +93,8 @@ class DynamoDBService:
                 
             return filtered_items
         except Exception as e:
-            logger.error(f"Failed to fetch activities: {e}")
+            import logging
+            logging.getLogger(__name__).error(f"Failed to fetch activities: {e}")
             return []
 
 dynamo_service = DynamoDBService()

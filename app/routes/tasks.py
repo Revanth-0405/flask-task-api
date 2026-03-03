@@ -20,9 +20,18 @@ def get_stats():
 @auth_required()
 def search_tasks():
     user_id = get_jwt_identity()
+    
+    # Grab all possible filters from the URL arguments
     search_term = request.args.get('q', '')
-    response, status = TaskService.search_tasks(user_id, search_term)
-    return jsonify(response), status
+    status = request.args.get('status')
+    priority = request.args.get('priority')
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+    
+    response, status_code = TaskService.search_tasks(
+        user_id, search_term, status, priority, date_from, date_to
+    )
+    return jsonify(response), status_code
 
 @tasks_bp.route('/bulk-update', methods=['POST'])
 @auth_required()
@@ -107,7 +116,7 @@ def get_activities():
     task_id = request.args.get('task_id')
     date_from = request.args.get('date_from')
     date_to = request.args.get('date_to')
-
+    
     activities = dynamo_service.get_activities(user_id, action, task_id, date_from, date_to)
     return jsonify({"activities": activities}), 200
 
